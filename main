@@ -1,0 +1,1832 @@
+import psycopg2
+import pandas as pd
+import numpy as np
+from datetime import datetime, date, timedelta
+import os
+import getpass
+import requests
+from psycopg2.extras import execute_values
+from tabulate import tabulate
+from termcolor import colored
+import time
+import keyboard
+
+
+def login_usuario():
+    nome = input("Digite seu nome de usuário: ")
+    senha = getpass.getpass("Digite sua senha: ")
+    
+    cursor, conexao = iniciabanco()
+    
+    # Verifica se o nome de usuário e a senha estão corretos
+    cursor.execute("SELECT * FROM usuarios WHERE nome = %s AND senha = %s", (nome, senha))
+    usuario_valido = cursor.fetchone()
+    
+    cursor.close()
+    conexao.close()
+    
+    if usuario_valido:
+        print("Login realizado com sucesso.")
+        return nome
+    else:
+        print("Nome de usuário ou senha incorretos.")
+        return None
+
+
+def iniciabanco():
+    conexao = psycopg2.connect(
+        dbname = "digitar_o_nome_do_banco",
+        user= "o_usuário_do_banco",
+        password= "senha_do_banco",
+        host="local_do_banco",
+        port=porta_do_banco
+    )
+    cursor = conexao.cursor()
+    return cursor, conexao
+
+
+def verifica_digito_inteiro(numero):
+    while True:
+        try:
+            numero = int(numero)
+            break
+        except ValueError:
+            numero = input("Valor não numérico, digite outra vez: ")
+            continue
+    return numero
+
+def verificar_estado(string):
+    estados = {
+        "Acre": "AC",
+        "Alagoas": "AL",
+        "Amapá": "AP",
+        "Amazonas": "AM",
+        "Bahia": "BA",
+        "Ceará": "CE",
+        "Distrito Federal": "DF",
+        "Espírito Santo": "ES",
+        "Goiás": "GO",
+        "Maranhão": "MA",
+        "Mato Grosso": "MT",
+        "Mato Grosso do Sul": "MS",
+        "Minas Gerais": "MG",
+        "Pará": "PA",
+        "Paraíba": "PB",
+        "Paraná": "PR",
+        "Pernambuco": "PE",
+        "Piauí": "PI",
+        "Rio de Janeiro": "RJ",
+        "Rio Grande do Norte": "RN",
+        "Rio Grande do Sul": "RS",
+        "Rondônia": "RO",
+        "Roraima": "RR",
+        "Santa Catarina": "SC",
+        "São Paulo": "SP",
+        "Sergipe": "SE",
+        "Tocantins": "TO",
+    }
+
+    for estado, sigla in estados.items():
+        if string.lower() == estado.lower():
+            return sigla
+    
+    return None
+
+def limpar():
+    # Verificar o sistema operacional
+    print(f"Sistema operacional detectado: {os.name}")
+    
+    if os.name == 'nt':  # Windows
+        os.system('cls')
+    elif os.name == 'posix':  # Unix (Linux, Mac, etc.)
+        os.system('clear')
+    else:
+        print("Sistema operacional não suportado")
+
+def titulo_do_programa(titulo_a_ser_inserido):
+    for numero in range (1,7):
+        print()
+        if numero == 4:
+            print(f"                     {titulo_a_ser_inserido}")
+        for i in range (0,70):
+            print("*",end='')
+    print()
+
+def lista_de_comandos():
+    print()
+    print("1. Cadastrar uma leitura (cadastrar)")
+    print("2. Visualizar as leituras do ano (visualizar)")
+    print("3. Procurar uma leitura específica (procurar)")
+    print("4. Alterar uma leitura (alterar)")
+    print("5. Sair do programa (sair)")
+    print("6. Limpar a tela (clear)")
+    print("7. Para visualizar todos os autores e autoras (autores)")
+    print("8. Para visualizar todos os livros (livros)")
+    print("9. Para visualizar todas as leituras (leituras)")
+    print("10. Para acessar as configurações do programa (conf)")
+    print("11. Tabela geral (tabela)")
+    print("12. Adicionar notas a uma leitura (notasleitura)")
+    print("13. Adicionar notas gerais (notasgerais)")
+    print("14. Para concluir uma leitura em andamento (concluirleitura)")
+    print("15. Inserir nota de leitura manual (notamanual)")
+    print("16. Inserir sessão de estudos (inserir)")
+    print("17. Excluir uma leitura em andamento.")
+    print()
+
+def tabela_geral():
+    cursor, conexao = iniciabanco()
+    query = '''
+    SELECT 
+        CONCAT(
+            CASE
+                WHEN EXTRACT(MONTH FROM leitura.data_leitura) BETWEEN 1 AND 6 THEN '1º/'
+                ELSE '2º/'
+            END,
+            EXTRACT(YEAR FROM leitura.data_leitura)
+        ) AS Semestre,
+        SUM(livro.paginas) AS total_paginas_lidas,
+        COUNT(leitura.id_leitura) AS total_livros_lidos,
+        ROUND(AVG(livro.paginas), 2) AS media_paginas_por_livro
+    FROM
+        leitura
+    JOIN
+        livros_autores ON leitura.id_livro_autores = livros_autores.id_livro_autores
+    JOIN
+        livro ON livros_autores.id_livro = livro.id_livro
+    WHERE 
+        leitura.concluida = True
+    GROUP BY
+        EXTRACT(YEAR FROM leitura.data_leitura),
+        CASE 
+            WHEN EXTRACT(MONTH FROM leitura.data_leitura) BETWEEN 1 AND 6 THEN 1
+            ELSE 2
+        END,
+        CASE 
+            WHEN EXTRACT(MONTH FROM leitura.data_leitura) BETWEEN 1 AND 6 THEN '1º/'
+            ELSE '2º/'
+        END
+    HAVING
+        EXTRACT(YEAR FROM leitura.data_leitura) >= 2019
+    ORDER BY
+        EXTRACT(YEAR FROM leitura.data_leitura),
+        CASE 
+            WHEN EXTRACT(MONTH FROM leitura.data_leitura) BETWEEN 1 AND 6 THEN 1
+            ELSE 2
+        END;
+    '''
+    cursor.execute(query)
+        # Pegue os resultados e coloque-os em um DataFrame
+    rows = cursor.fetchall()
+    df = pd.DataFrame(rows, columns=['Semestre', 'Total Páginas Lidas', 'Total Livros Lidos', 'Média Páginas por Livro'])
+
+    # Feche a conexão
+    cursor.close()
+    conexao.close()
+
+    # Exiba o DataFrame
+    print(tabulate(df, headers='keys', tablefmt='psql'))
+
+def total_paginas_semestre():
+    cursor, conexao = iniciabanco()
+    hoje = date.today()
+    diadoano = float(hoje.timetuple().tm_yday)
+    cursor.execute('''
+    WITH semestre_atual AS (
+    SELECT
+        CASE
+            WHEN EXTRACT(MONTH FROM CURRENT_DATE) BETWEEN 1 AND 6 THEN DATE_TRUNC('year', CURRENT_DATE) + INTERVAL '0 month'
+            ELSE DATE_TRUNC('year', CURRENT_DATE) + INTERVAL '6 month'
+        END AS inicio_semestre,
+        CASE
+            WHEN EXTRACT(MONTH FROM CURRENT_DATE) BETWEEN 1 AND 6 THEN DATE_TRUNC('year', CURRENT_DATE) + INTERVAL '6 month' - INTERVAL '1 day'
+            ELSE DATE_TRUNC('year', CURRENT_DATE) + INTERVAL '1 year' - INTERVAL '1 day'
+        END AS fim_semestre
+        )
+        SELECT SUM(livro.paginas) AS media_paginas
+        FROM leitura
+        INNER JOIN livros_autores ON livros_autores.id_livro_autores = leitura.id_livro_autores
+        INNER JOIN livro ON livros_autores.id_livro = livro.id_livro
+        INNER JOIN autor ON livros_autores.autor1 = autor.id_autor
+        WHERE leitura.data_leitura >= (SELECT inicio_semestre FROM semestre_atual)
+        AND leitura.data_leitura <= (SELECT fim_semestre FROM semestre_atual)
+        AND leitura.concluida = TRUE;
+    ''')
+    resultados = cursor.fetchall()
+    resultados = resultados[0]
+    resultados = resultados[0]
+    if resultados is not None:
+        converter_inteiro = int(resultados)
+        media_paginas_semestre = converter_inteiro / diadoano
+        total_paginas_semestre = converter_inteiro
+        cursor.close()
+        return media_paginas_semestre, total_paginas_semestre
+    else:
+        total_paginas_semestre = 0
+        media_paginas_semestre = 0
+        return media_paginas_semestre, total_paginas_semestre
+
+def recorde_paginas_semestre():
+    cursor, conexao = iniciabanco()
+    hoje = date.today()
+    diadoano = float(hoje.timetuple().tm_yday)
+    cursor.execute('''
+    WITH semestre_paginas AS (
+        SELECT 
+            CONCAT(
+                CASE
+                    WHEN EXTRACT(MONTH FROM leitura.data_leitura) BETWEEN 1 AND 6 THEN '1º/'
+                    ELSE '2º/'
+                END,
+                EXTRACT(YEAR FROM leitura.data_leitura)
+            ) AS Semestre,
+            SUM(livro.paginas) AS total_paginas_lidas,
+            COUNT(leitura.id_leitura) AS total_livros_lidos,
+            ROUND(AVG(livro.paginas), 2) AS media_paginas_por_livro
+        FROM
+            leitura
+        JOIN
+            livros_autores ON leitura.id_livro_autores = livros_autores.id_livro_autores
+        JOIN
+            livro ON livros_autores.id_livro = livro.id_livro
+        WHERE 
+            leitura.concluida = True
+        GROUP BY
+            EXTRACT(YEAR FROM leitura.data_leitura),
+            CASE 
+                WHEN EXTRACT(MONTH FROM leitura.data_leitura) BETWEEN 1 AND 6 THEN 1
+                ELSE 2
+            END,
+            CASE 
+                WHEN EXTRACT(MONTH FROM leitura.data_leitura) BETWEEN 1 AND 6 THEN '1º/'
+                ELSE '2º/'
+            END
+        HAVING
+            EXTRACT(YEAR FROM leitura.data_leitura) >= 2019
+    )
+    SELECT 
+        Semestre,
+        total_paginas_lidas,
+        total_livros_lidos,
+        media_paginas_por_livro
+    FROM 
+        semestre_paginas
+    ORDER BY 
+        total_paginas_lidas DESC
+    LIMIT 1;
+        ''')
+    resultado = cursor.fetchone()
+    if resultado:
+        semestre, quantidade_paginas, total_livros, media_paginas = resultado
+        cursor.close()
+        conexao.close()
+        return semestre, quantidade_paginas
+    else:
+        print("Nenhum resultado encontrado.")
+
+def recorde_livros_semestre():
+    cursor, conexao = iniciabanco()
+    hoje = date.today()
+    diadoano = float(hoje.timetuple().tm_yday)
+    cursor.execute('''
+    WITH semestre_paginas AS (
+        SELECT 
+            CONCAT(
+                CASE
+                    WHEN EXTRACT(MONTH FROM leitura.data_leitura) BETWEEN 1 AND 6 THEN '1º/'
+                    ELSE '2º/'
+                END,
+                EXTRACT(YEAR FROM leitura.data_leitura)
+            ) AS Semestre,
+            SUM(livro.paginas) AS total_paginas_lidas,
+            COUNT(leitura.id_leitura) AS total_livros_lidos,
+            ROUND(AVG(livro.paginas), 2) AS media_paginas_por_livro
+        FROM
+            leitura
+        JOIN
+            livros_autores ON leitura.id_livro_autores = livros_autores.id_livro_autores
+        JOIN
+            livro ON livros_autores.id_livro = livro.id_livro
+        WHERE 
+            leitura.concluida = True
+        GROUP BY
+            EXTRACT(YEAR FROM leitura.data_leitura),
+            CASE 
+                WHEN EXTRACT(MONTH FROM leitura.data_leitura) BETWEEN 1 AND 6 THEN 1
+                ELSE 2
+            END,
+            CASE 
+                WHEN EXTRACT(MONTH FROM leitura.data_leitura) BETWEEN 1 AND 6 THEN '1º/'
+                ELSE '2º/'
+            END
+        HAVING
+            EXTRACT(YEAR FROM leitura.data_leitura) >= 2019
+        )
+        SELECT 
+            Semestre,
+            total_paginas_lidas,
+            total_livros_lidos,
+            media_paginas_por_livro
+        FROM 
+            semestre_paginas
+        ORDER BY 
+            total_livros_lidos DESC
+        LIMIT 1;
+
+
+        ''')
+    resultado = cursor.fetchone()
+    if resultado:
+        semestre, quantidade_paginas, total_livros, media_paginas = resultado
+        cursor.close()
+        conexao.close()
+        return semestre, total_livros
+    else:
+        print("Nenhum resultado encontrado.")
+
+
+def total_livros():
+    cursor, conexao = iniciabanco()
+    cursor.execute("SELECT COUNT(*) FROM leitura WHERE concluida = True;")
+    resultados = cursor.fetchall()
+    resultados = resultados[0]
+    resultados = resultados[0]
+    resultados = str(resultados)
+    cursor.close()
+    conexao.close()
+    return resultados
+
+def ler_recorde_leitura():
+    cursor, conexao = iniciabanco()
+    sql = "SELECT MAX(dias) AS maior_dia FROM dias_leitura;"
+    cursor.execute(sql)
+    resultados = cursor.fetchall()
+    resultados = resultados[0]
+    resultados = resultados[0]
+    return resultados
+
+def tempo_dias_leitura_atual():
+    cursor, conexao = iniciabanco()
+    sql = "SELECT MAX(dias) AS maior_dia FROM dias_leitura WHERE status = true;"
+    cursor.execute(sql)
+    resultados = cursor.fetchall()
+    resultados = resultados[0]
+    resultados = resultados[0]
+    return resultados
+
+def livros_semestre():
+    cursor, conexao = iniciabanco()
+    cursor.execute('''
+    WITH semestre_atual AS (
+        SELECT
+            CASE
+                WHEN EXTRACT(MONTH FROM CURRENT_DATE) BETWEEN 1 AND 6 THEN DATE_TRUNC('year', CURRENT_DATE) + INTERVAL '0 month'
+                ELSE DATE_TRUNC('year', CURRENT_DATE) + INTERVAL '6 month'
+            END AS inicio_semestre,
+            CASE
+                WHEN EXTRACT(MONTH FROM CURRENT_DATE) BETWEEN 1 AND 6 THEN DATE_TRUNC('year', CURRENT_DATE) + INTERVAL '6 month' - INTERVAL '1 day'
+                ELSE DATE_TRUNC('year', CURRENT_DATE) + INTERVAL '1 year' - INTERVAL '1 day'
+            END AS fim_semestre
+    )
+    SELECT COUNT(*)
+    FROM leitura
+    INNER JOIN livros_autores ON livros_autores.id_livro_autores = leitura.id_livro_autores
+    INNER JOIN livro ON livros_autores.id_livro = livro.id_livro
+    INNER JOIN autor ON livros_autores.autor1 = autor.id_autor
+    WHERE leitura.data_leitura >= (SELECT inicio_semestre FROM semestre_atual)
+    AND leitura.data_leitura <= (SELECT fim_semestre FROM semestre_atual)
+    AND leitura.concluida = TRUE;
+    ''')
+    resultados = cursor.fetchall()
+    resultados = resultados[0]
+    resultados = resultados[0]
+    resultados = str(resultados)
+    cursor.close()
+    return resultados
+
+
+def lista_de_medias():
+    print()
+    media_paginas_semestre, soma_paginas_semestre = total_paginas_semestre()
+    semestre, recorde_semestre = recorde_paginas_semestre()
+    livros_do_semestre = livros_semestre()
+    livros_ano = quantidade_livros_ano()
+    total_de_livros = total_livros()
+    recorde_dias_leitura = ler_recorde_leitura()
+    tempo_atual = tempo_dias_leitura_atual()
+    semestre_livros, livros_por_semestre,  = recorde_livros_semestre()
+    colored((media_paginas_semestre, soma_paginas_semestre, livros_ano, total_de_livros, recorde_dias_leitura, tempo_atual),'green')
+    ano = datetime.now().year
+    
+    table_data = [
+        [f"     Total de páginas lidas neste semestre      ", soma_paginas_semestre],
+        [f"      Total de livros lidos neste semestre      ", livros_do_semestre],
+        [f"         Total de Livros Lidos em {ano}         ", livros_ano],
+        [f"         Total de Livros Lidos na Vida          ", total_de_livros],
+        [f"       Dias de leitura consecutiva atual        ", tempo_atual],
+        [f"      Recorde de maior Leitura consecutiva      ", recorde_dias_leitura],
+        [f" Recorde de páginas num semestre em {semestre}: ", recorde_semestre],
+        [f" Recorde de livros num semestre em {semestre_livros}: ", livros_por_semestre],
+        
+    ]
+
+    print(tabulate(table_data, headers=["Descrição", "Valor"], tablefmt="grid"))
+
+def tempo_leitura():
+    sql_consulta_livro = '''
+    SELECT leitura.id_leitura, livro.titulo, autor.nome
+        FROM leitura
+        INNER JOIN livros_autores ON livros_autores.id_livro_autores = leitura.id_livro_autores
+        INNER JOIN livro ON livros_autores.id_livro = livro.id_livro
+        INNER JOIN autor ON livros_autores.autor1 = autor.id_autor
+        WHERE leitura.concluida = false;'''
+    sql_consulta_tempo = "select sum(tempo_minutos) from historico_leitura hl where id_leitura = %s"
+    cursor, conexao = iniciabanco()
+    cursor.execute(sql_consulta_livro)
+    resultados = cursor.fetchall()
+    id_consulta = []
+    titulos = []
+    tempo_leitura = []
+    for resultado in resultados:
+        id_consulta.append(resultado[0])
+        titulos.append(resultado[1])
+        id = [resultado[0]]
+        cursor.execute(sql_consulta_tempo, id)
+        resultado_tempo_leitura = cursor.fetchall()
+        resultado_tempo_leitura = resultado_tempo_leitura[0]
+        if resultado_tempo_leitura is None or resultado_tempo_leitura[0] is None:
+            tempo_leitura.append(0)
+        else:
+            tempo_leitura.append(resultado_tempo_leitura[0])
+        
+    data = list(zip(id_consulta, titulos, tempo_leitura))
+    headers = ["ID", "Título", "Tempo Atual de Leitura"]
+    table = tabulate(data, headers=headers, tablefmt="grid")
+    print(table)
+
+
+def quantidade_livros_ano():
+    cursor, conexao = iniciabanco()
+    cursor.execute('''
+    SELECT COUNT(*) AS total_livros
+    FROM leitura
+    INNER JOIN livros_autores ON livros_autores.id_livro_autores = leitura.id_livro_autores
+    INNER JOIN livro ON livros_autores.id_livro = livro.id_livro
+    INNER JOIN autor ON livros_autores.autor1 = autor.id_autor
+    WHERE EXTRACT(YEAR FROM leitura.data_leitura) = EXTRACT(YEAR FROM CURRENT_DATE)
+    AND leitura.concluida = TRUE;
+    ''')
+    resultados = cursor.fetchall()
+    resultados = resultados[0]
+    resultados = resultados[0]
+    resultados = str(resultados)
+    cursor.close()
+    return resultados
+
+def cadastrar_livro():
+    while True:
+        titulo = input("Digite o título do livro que deseja cadastrar: ")
+        tipo = input(f"Digite o tipo do livro '{titulo}': ")
+        isbn = input(f"Digite o ISBN do livro '{titulo}': ")
+        editora = input(f"Digite a editora do livro '{titulo}': ")
+        paginas = input(f"Digite a quantidade de páginas do livro '{titulo}': ")
+        paginas = verifica_digito_inteiro(paginas)
+
+        cursor, conexao = iniciabanco()
+
+        sql = "INSERT INTO livro (titulo, tipo, isbn, editora, paginas) VALUES (%s, %s, %s, %s, %s)"
+        lista_atributos = [titulo, tipo, isbn, editora, paginas]
+
+        print("Você digitou: ")
+        i = 0
+        for item in lista_atributos:
+            i += 1
+            print(f"{i}. {item}")
+
+        confirma = input('Você confirma os dados a serem inseridos? (sim ou não): ').strip().lower()
+
+        if confirma == 'sim' or confirma == 's':
+            try:
+                cursor.execute(sql, lista_atributos)
+                conexao.commit()
+                print("Dados inseridos com sucesso!")
+                cursor.execute('''
+                SELECT id_livro FROM livro ORDER BY id_livro DESC LIMIT 1''')
+                id_livro = cursor.fetchall()[0]
+            except psycopg2.Error as e:
+                print(f"Erro ao inserir dados: {e}")
+                conexao.rollback()
+            finally:
+                cursor.close()
+                conexao.close()
+            break
+        else:
+            print("Cadastro cancelado. Tente novamente. ")
+            cursor.close()
+            conexao.close()
+            continue
+    
+    return id_livro
+
+def cadastrar_autor():
+    quantidade_autores = input("Quantos autores o livro possuí? ")
+    quantidade_autores = verifica_digito_inteiro(quantidade_autores)
+    
+    def verifica_autor():
+        nome_autor = input("Digite o nome do autor: ")
+        cursor, conexao = iniciabanco()
+        sql = "SELECT nome, id_autor FROM autor where nome = %s"
+        dados = [nome_autor]
+        cursor.execute(sql, dados)
+        resultados = cursor.fetchone()
+        if resultados:
+            nome, id_autor = resultados
+            confirma = input(f'O nome do(a) autor(a) que você deseja cadastrar é: "{nome}": ')
+            confirma = confirma.lower()
+            if confirma == 'sim' or confirma == 's':
+                 return id_autor
+            else:
+                 return None
+        else:
+            cursor.close()
+            conexao.close
+            return None
+
+    id_autor = verifica_autor()
+    if id_autor:
+        lista_id_autor = [id_autor]
+        return lista_id_autor
+    else:
+        lista_id_autor = []
+        contador = 0
+        while True:
+            cursor, conexao = iniciabanco()
+            sexo = input("Qual o sexo do(a) autor(a)? ")
+            sexo = sexo.lower()
+
+            if sexo == 'm' or sexo == 'masculino':
+                sexo = 'M'
+                nome = input("Qual o nome do autor? ")
+                nome = nome.title()
+                pais = input(f"Qual o país de nascimento {nome}? ")
+                pais = pais.lower()
+                if pais == 'brasil':
+                    estado = input(f"Qual o estado do {nome}? ")
+                    estado = verificar_estado(estado)
+                else:
+                    estado = None
+                pais = pais.title()
+                cor = input(f"Qual a cor do {nome}? ")
+                cor = cor.title()
+                vivo = input(f"O {nome} ainda é vivo? (Sim ou Não) " )
+                vivo = vivo.lower()
+                if vivo == 'sim' or vivo == 's':
+                    vivo = 'Y'
+                    ano_morte = None
+                else:
+                    vivo = 'N'
+                    ano_morte = input(f"Qual o ano da morte do {nome}? ")
+
+            else:
+                sexo = 'F'
+                nome = input("Qual o nome da autora? ")
+                nome = nome.title()
+                pais = input(f"Qual o país de nascimento da {nome}? ")
+                pais = pais.lower()
+                if pais == 'brasil':
+                    estado = input(f"Qual o estado da {nome}? ")
+                    estado = verificar_estado(estado)
+                else:
+                    estado = None
+                pais = pais.title()
+                cor = input(f"Qual a cor da {nome}? ")
+                cor = cor.title()
+                vivo = input(f"A {nome} ainda é viva? (Sim ou Não) ")
+                vivo = vivo.lower()
+                if vivo == 'sim' or vivo == 's':
+                    vivo = 'Y'
+                    ano_morte = None
+                else:
+                    vivo = 'N'
+                    ano_morte = input(f"Qual o ano da morte da {nome}? ")
+            
+            lista = [nome, pais, estado, cor, sexo, vivo, ano_morte]
+            lista_atributos = ['Nome', 'País', 'Estado', 'Cor', 'Sexo', 'O autor é vivo?', 'Ano da Morte']
+            print()
+            print("Por favor, confira os dados digitados: ")
+            print()
+                
+            i = 0
+            for item in lista:
+                atributo = lista_atributos[i]
+                print(f"{atributo}: {item}")
+                i = i + 1
+                
+            continuar = input("Deseja inserir os dados? (Sim) ou (Não) ")
+            continuar = continuar.lower()
+            if continuar == 'sim' or continuar == 's':
+                sql = "INSERT INTO autor (nome, pais, estado, cor, sexo, vivo, ano_morte) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+                try:
+                    cursor.execute(sql, lista)
+                    conexao.commit()
+                    cursor.execute('''
+                    SELECT id_autor FROM autor ORDER BY id_autor DESC LIMIT 1''')
+                    id_autor = cursor.fetchone()[0]
+                    lista_id_autor.append(id_autor)
+                    print("Dados inseridos com sucesso")
+                except psycopg2.Error as e:
+                    print(f"Erro ao inserir dados: {e}")
+                    conexao.rollback()
+                finally:
+                    cursor.close()
+                    conexao.close()
+                contador = contador + 1
+                if contador == quantidade_autores:
+                    break
+                
+            else:
+                print("Cadastro cancelado. Tente novamente. ")
+                cursor.close()
+                conexao.close()
+                continue
+
+        return lista_id_autor
+
+def cadastrar_livro_autor(id_livro, lista_id_autor):
+    cursor, conexao = iniciabanco()
+    total = 11 - len(lista_id_autor)
+    for i in range(1, total):
+        lista_id_autor.append(None)
+    sql = "INSERT INTO livros_autores (id_livro, autor1, autor2, autor3, autor4, autor5, autor6, autor7, autor8, autor9, autor10) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+    dados = [id_livro, *lista_id_autor]
+    cursor.execute(sql, dados)
+    conexao.commit()
+    cursor.execute('''
+    SELECT id_livro_autores FROM livros_autores ORDER BY id_livro_autores DESC LIMIT 1''')
+    id_livro_autores = cursor.fetchall()[0]
+    conexao.close()
+    cursor.close()
+    return id_livro_autores
+
+def cadastrar_leitura(id_livro_autores):
+    cursor, conexao = iniciabanco()
+    data_hoje = datetime.now().date().strftime('%Y-%m-%d')
+    while True:
+        concluida = input("A leitura foi concluida? ")
+        concluida = concluida.lower()
+        if concluida == 'sim' or concluida == 's':
+            quantidade_leitura = input("Quantas vezes o livro foi lido? ")
+            quantidade_leitura = verifica_digito_inteiro(quantidade_leitura)
+            dia_leitura = input("Digite o dia que o livro foi lido: ")
+            dia_leitura = verifica_digito_inteiro(dia_leitura)
+            mes_leitura = input("Digite o mês que foi lido: ")
+            mes_leitura = verifica_digito_inteiro(mes_leitura)
+            ano = 2024
+            nota = input("Digite a nota da sua leitura: ")
+            nota = verifica_digito_inteiro(nota)
+            while nota > 11 or nota < 0:
+                nota = verifica_digito_inteiro(input("Nota inválida! Digite de novo: "))
+            sql = "INSERT INTO leitura (id_livro_autores, quantidade_leitura, data_leitura, nota) VALUES (%s, %s, %s, %s)"
+            data_leitura = f"{ano}-{mes_leitura}-{dia_leitura}"
+            dados = [id_livro_autores, quantidade_leitura, data_leitura, nota]
+            cursor.execute(sql, dados)
+            conexao.commit()
+            conexao.close()
+            cursor.close()
+            break
+        elif concluida == 'nao' or concluida == 'não' or concluida == 'n':
+            sql = "INSERT INTO leitura (id_livro_autores, concluida, inicio_leitura) VALUES (%s, %s, %s)"
+            dados = [id_livro_autores, 'False', data_hoje]
+            cursor.execute(sql, dados)
+            conexao.commit()
+            conexao.close()
+            cursor.close()
+            break
+        else:
+            print("Por favor, digite uma opção válida.")
+
+def concluir_leitura():
+    cursor, conexao = iniciabanco()
+    def inserir_tempo_leitura(id_leitura):
+        sql = '''
+        SELECT 
+        ROUND(SUM(EXTRACT(EPOCH FROM tempo_leitura)) / 60,2) AS soma_tempo_minutos,
+        TO_CHAR(INTERVAL '1 second' * SUM(EXTRACT(EPOCH FROM tempo_leitura)), 'HH24:MI:SS') AS tempo_total_leitura
+        FROM historico_leitura
+        WHERE id_leitura = %s
+        GROUP BY id_leitura;
+            '''
+        dados = [id_leitura]
+        cursor.execute(sql, dados)
+        resultados = cursor.fetchall()
+        tempo_leitura, horas_leitura = resultados[0]
+        sql_insercao = '''
+        UPDATE leitura
+        SET minutos_leitura = %s, horas_leitura = %s
+        WHERE id_leitura = %s
+        '''
+        dados_insercao = [tempo_leitura, horas_leitura, id_leitura]
+        cursor.execute(sql_insercao, dados_insercao)
+        conexao.commit()
+        
+    def inserir_dias_de_leitura(id_leitura):
+        sql = "SELECT inicio_leitura, data_leitura from leitura where id_leitura = %s"
+        dados = [id_leitura]
+        cursor.execute(sql, dados)
+        resultados = cursor.fetchall()
+        inicio_leitura, final_leitura = resultados[0]
+        dias = (final_leitura - inicio_leitura).days
+        sql_insercao = '''
+        UPDATE leitura 
+        SET dias_leitura = %s
+        WHERE id_leitura = %s
+        '''
+        dados_insercao = [dias, id_leitura]
+        cursor.execute(sql_insercao, dados_insercao)
+        conexao.commit()
+        conexao.commit()
+        conexao.close()
+        cursor.close()
+
+
+    sql = ('''
+    SELECT leitura.id_leitura, livro.titulo, autor.nome
+        FROM leitura
+        INNER JOIN livros_autores ON livros_autores.id_livro_autores = leitura.id_livro_autores
+        INNER JOIN livro ON livros_autores.id_livro = livro.id_livro
+        INNER JOIN autor ON livros_autores.autor1 = autor.id_autor
+        WHERE leitura.concluida = false;
+               ''')
+    cursor.execute(sql)
+    resultados = cursor.fetchall()
+    print("As leituras que você tem em andamento são: \n")
+    for linha in resultados:
+        print("O id_livro do livro é:     ", linha[0])
+        print("O título do livro é:       ", linha[1])
+        print("O nome do autor é:         ", linha[2])
+        print("---------------------------------------------------------")
+    id_leitura = input("Digite o id da leitura a qual você vinculará a nota? ")
+    id_leitura = verifica_digito_inteiro(id_leitura) 
+    inserir_tempo_leitura(id_leitura)
+    quantidade_leitura = input("Digite a quantidade de leituras que já fez do livro: ")
+    data_da_leitura = input("A leitura foi concluída hoje? ")
+    data_da_leitura = data_da_leitura.lower()
+    if data_da_leitura == 's' or data_da_leitura == 'sim':
+        data_da_leitura = datetime.now().date().strftime('%Y-%m-%d')
+    else:
+        data_da_leitura = input("Digite a data da leitura no formato 'AAAA-MM-DD': ")
+    nota = input("Digite a nota da leitura: ")
+    nota = verifica_digito_inteiro(nota)
+    aprendizado = [input("Digite o que você aprendeu com o livro: ")]
+    while nota > 11 or nota < 0:
+        nota = verifica_digito_inteiro(input("Nota inválida! Digite de novo: "))
+    
+    sql = 'UPDATE leitura SET data_leitura = %s, quantidade_leitura = %s, nota = %s, concluida = true, aprendizado = %s WHERE id_leitura = %s'
+    dados =  [data_da_leitura, quantidade_leitura, nota, aprendizado, id_leitura]
+    cursor.execute(sql, dados)
+    conexao.commit()
+    inserir_dias_de_leitura(id_leitura)
+    conexao.commit()
+    conexao.close()
+    cursor.close()
+
+
+def excluir_leitura_em_andamento():
+    sql_consulta = '''
+        SELECT leitura.id_leitura, livro.titulo, autor.nome
+        FROM leitura
+        INNER JOIN livros_autores ON livros_autores.id_livro_autores = leitura.id_livro_autores
+        INNER JOIN livro ON livros_autores.id_livro = livro.id_livro
+        INNER JOIN autor ON livros_autores.autor1 = autor.id_autor
+        WHERE leitura.concluida = false;
+    '''
+    cursor, conexao = iniciabanco()
+    cursor.execute(sql_consulta)
+    resultados = cursor.fetchall()
+    headers = ["ID", "Título", "Autor"]
+    table = tabulate(resultados, headers=headers, tablefmt="grid")
+    print(table)
+    #Pegar o ID
+    id_consulta = [input("Qual o id da leitura a ser excluída?  ")]
+    consulta_id_livro_autores = "select id_livro_autores from leitura where id_leitura = %s"
+    cursor.execute(consulta_id_livro_autores, id_consulta)
+    id_livro_autores = cursor.fetchall()
+    #Excluir
+    sql_excluir_leitura = "delete from leitura where id_leitura = %s;"
+    cursor.execute(sql_excluir_leitura, id_consulta)
+    conexao.commit()
+    #Consultar id_livro_autores
+    id_livro_autores = id_livro_autores[0]
+    consulta_id_livro_id_autor = "select * from livros_autores where id_livro_autores = %s;"
+    sql_excluir_livrosautores = "delete from livros_autores where id_livro_autores = %s;"
+    cursor.execute(consulta_id_livro_id_autor, id_livro_autores)
+    resultados = cursor.fetchall()
+    cursor.execute(sql_excluir_livrosautores, id_livro_autores)
+    conexao.commit()
+    id_livro = []
+    for resultado in resultados:
+        id_livro.append(resultado[0])
+    #Excluir livro
+    sql_excluir_livro = "delete from livro where id_livro = %s;"
+    cursor.execute(sql_excluir_livro, id_livro)
+    conexao.commit()
+    print("Livro excluído com sucesso.")
+
+def visualizar_leituras():
+    limpar()
+    print("VISUALIZAÇÃO DAS LEITURAS NO ANO DE 2024!")
+    print()
+    cursor, conexao = iniciabanco()
+    cursor.execute('''
+    SELECT livro.titulo, autor.nome, autor.pais, autor.estado, autor.sexo, autor.ano_morte, livro.tipo,
+    livro.editora, livro.paginas, livro.resumo, livros_autores.id_livro_autores, leitura.data_leitura
+        FROM leitura
+        INNER JOIN livros_autores ON leitura.id_livro_autores = livros_autores.id_livro_autores
+        INNER JOIN livro ON livros_autores.id_livro = livro.id_livro
+        INNER JOIN autor ON livros_autores.autor1 = autor.id_autor
+        WHERE leitura.data_leitura > '2024-01-01' and leitura.concluida = True;
+                   ''')
+    resultados = cursor.fetchall()
+
+    # Itera sobre os resultados e exibe-os na tela
+    for linha in resultados:
+        print("Título:", linha[0])
+        print("Autor:", linha[1])
+        print("País do Autor:", linha[2])
+        if linha[3]:
+            print("Estado do Autor:", linha[3])
+        print("Sexo do Autor:", linha[4])
+        if linha[5]:
+            print("Ano de Morte do Autor:", linha[5])
+        print("Tipo de Livro:", linha[6])
+        print("Editora:", linha[7])
+        print("Páginas:", linha[8])
+        print("Resumo:", linha[9])
+        print("ID Livro Autores:", linha[10])
+        data_formatada = linha[11].strftime("%d/%m/%Y")
+        print("Data de Leitura:", data_formatada)
+        print("--------------------------------------")
+
+    input("Tecle em qualquer tecla paara voltar ao menu anterior.")
+    cursor.close()
+
+def avancar(pergunta):
+    pergunta = pergunta.lower()
+    if pergunta == 's' or pergunta == 'sim':
+        return True
+    else:
+        return False
+
+def procurar_leituras():
+    cursor, conexao = iniciabanco()
+    if not cursor:
+        return
+        
+    sql_titulo = '''SELECT livro.titulo, autor.nome, livro.tipo, livro.isbn, livro.editora FROM leitura  
+    	INNER JOIN livros_autores ON leitura.id_livro_autores = livros_autores.id_livro_autores
+        INNER JOIN livro ON livros_autores.id_livro = livro.id_livro
+        INNER JOIN autor ON livros_autores.autor1 = autor.id_autor
+        where livro.titulo ilike %s and leitura.concluida  = true; '''
+    titulo_do_programa("PROCURAR LIVROS")
+
+    while True:
+        print()
+        print("Digite o título que você deseja ou [retornar] para voltar ao menu anterior.")
+        print()
+        comando = input("Digite o você deseja: ")
+        comando = comando.lower()
+        if comando == 'retornar':
+            return
+        else:
+            cursor.execute(sql_titulo, ('%' + comando + '%',))
+            resultados = cursor.fetchall()    
+            if resultados:
+                for linha in resultados:
+                    if len(linha) >= 7:
+                        print("Título:", linha[0])
+                        print("Tipo:", linha[1])
+                        print("ISBN:", linha[2])
+                        print("Editora:", linha[3])
+                        print("Páginas:", linha[4])
+                        print("Resumo:", linha[5])
+                        print("id_livro:", linha[6])
+                        print("--------------------------------------")
+                    else:
+                        print("Os dados retornados não correspondem à estrutura esperada.")
+            else:
+                print("Nenhum livro encontrado com esse título.")
+                continue
+            
+            comando = input("O livro que você procura é este? (s/n) ")
+            lista_id_livro = []
+            comando = comando.lower()
+            if comando == 'retornar':
+                return
+            elif avancar(comando):
+                for linha in resultados:
+                    lista_id_livro.append(linha[6])
+                sql_leituras_especificas = ('''
+                SELECT livro.titulo, autor.nome, autor.pais, autor.estado, autor.sexo, autor.ano_morte, livro.tipo,
+                livro.editora, livro.paginas, livro.resumo, livros_autores.id_livro_autores, leitura.data_leitura
+                    FROM leitura
+                        INNER JOIN livros_autores ON leitura.id_livro_autores = livros_autores.id_livro_autores
+                        INNER JOIN livro ON livros_autores.id_livro = livro.id_livro
+                        INNER JOIN autor ON livros_autores.autor1 = autor.id_autor
+                            WHERE livro.id_livro IN %s;
+                ''')
+                # Converting the list to a tuple
+                cursor.execute(sql_leituras_especificas, (tuple(lista_id_livro),))
+                resultados = cursor.fetchall()
+                for linha in resultados:
+                    print("Título:", linha[0])
+                    print("Autor:", linha[1])
+                    print("País do Autor:", linha[2])
+                    if linha[3]:
+                        print("Estado do Autor:", linha[3])
+                    print("Sexo do Autor:", linha[4])
+                    if linha[5]:
+                        print("Ano de Morte do Autor:", linha[5])
+                    print("Tipo de Livro:", linha[6])
+                    print("Editora:", linha[7])
+                    print("Páginas:", linha[8])
+                    print("Resumo:", linha[9])
+                    print("ID Livro Autores:", linha[10])
+                    data_formatada = linha[11].strftime("%d/%m/%Y")
+                    print("Data de Leitura:", data_formatada)
+                    print("--------------------------------------")
+                print(lista_id_livro)
+                return lista_id_livro
+
+
+def alterar_leituras():
+    cursor, conexao = iniciabanco()
+    titulo_do_programa("**ALTERAR UMA LEITURA**")
+    titulo = input("Digite o título da leitura que deseja alterar: ")
+
+    cursor.execute('''
+    SELECT leitura.id_leitura, livro.titulo, autor.nome, leitura.data_leitura, leitura.nota, livro.id_livro, autor.id_autor
+    FROM leitura
+    INNER JOIN livros_autores ON leitura.id_livro_autores = livros_autores.id_livro_autores
+    INNER JOIN livro ON livros_autores.id_livro = livro.id_livro
+    INNER JOIN autor ON livros_autores.autor1 = autor.id_autor
+    WHERE livro.titulo ILIKE %s
+    ''', ('%' + titulo + '%',))
+    leitura_selecionada = cursor.fetchone()
+    
+    if not leitura_selecionada:
+        print("Leitura não encontrada.")
+        cursor.close()
+        return
+
+    id_leitura = leitura_selecionada[0]
+    id_livro = leitura_selecionada[5]
+    id_autor = leitura_selecionada[6]
+
+    while True:
+        print("\nCampos disponíveis para alteração: ")
+        print("1. Título do livro")
+        print("2. Tipo do livro")
+        print("3. ISBN do livro")
+        print("4. Editora do livro")
+        print("5. Páginas do livro")
+        print("6. Resumo do livro")
+        print("7. Nome do autor")
+        print("8. País do autor")
+        print("9. Estado do autor")
+        print("10. Cor do autor")
+        print("11. Sexo do autor")
+        print("12. Vivo (autor)")
+        print("13. Ano de morte do autor")
+        print("14. Quantidade de leitura")
+        print("15. Data de leitura")
+        print("16. Nota")
+        print("17. Sair")
+
+        campo = input("Digite o número do campo que deseja alterar (ou 17 para sair): ")
+        campo = verifica_digito_inteiro(campo)
+
+        if campo == 1:
+            novo_valor = input("Digite o novo título: ")
+            cursor.execute("UPDATE livro SET titulo = %s WHERE id_livro = %s", (novo_valor, id_livro))
+        elif campo == 2:
+            novo_valor = input("Digite o novo tipo: ")
+            cursor.execute("UPDATE livro SET tipo = %s WHERE id_livro = %s", (novo_valor, id_livro))
+        elif campo == 3:
+            novo_valor = input("Digite o novo ISBN: ")
+            cursor.execute("UPDATE livro SET isbn = %s WHERE id_livro = %s", (novo_valor, id_livro))
+        elif campo == 4:
+            novo_valor = input("Digite a nova editora: ")
+            cursor.execute("UPDATE livro SET editora = %s WHERE id_livro = %s", (novo_valor, id_livro))
+        elif campo == 5:
+            novo_valor = input("Digite o novo número de páginas: ")
+            novo_valor = verifica_digito_inteiro(novo_valor)
+            cursor.execute("UPDATE livro SET paginas = %s WHERE id_livro = %s", (novo_valor, id_livro))
+        elif campo == 6:
+            novo_valor = input("Digite o novo resumo: ")
+            cursor.execute("UPDATE livro SET resumo = %s WHERE id_livro = %s", (novo_valor, id_livro))
+        elif campo == 7:
+            novo_valor = input("Digite o novo nome do autor: ")
+            cursor.execute("UPDATE autor SET nome = %s WHERE id_autor = %s", (novo_valor, id_autor))
+        elif campo == 8:
+            novo_valor = input("Digite o novo país do autor: ")
+            cursor.execute("UPDATE autor SET pais = %s WHERE id_autor = %s", (novo_valor, id_autor))
+        elif campo == 9:
+            novo_valor = input("Digite o novo estado do autor: ")
+            cursor.execute("UPDATE autor SET estado = %s WHERE id_autor = %s", (novo_valor, id_autor))
+        elif campo == 10:
+            novo_valor = input("Digite a nova cor do autor: ")
+            cursor.execute("UPDATE autor SET cor = %s WHERE id_autor = %s", (novo_valor, id_autor))
+        elif campo == 11:
+            novo_valor = input("Digite o novo sexo do autor (M/F): ")
+            cursor.execute("UPDATE autor SET sexo = %s WHERE id_autor = %s", (novo_valor, id_autor))
+        elif campo == 12:
+            novo_valor = input("O autor está vivo? (Y/N): ")
+            cursor.execute("UPDATE autor SET vivo = %s WHERE id_autor = %s", (novo_valor, id_autor))
+        elif campo == 13:
+            novo_valor = input("Digite o novo ano de morte do autor: ")
+            novo_valor = verifica_digito_inteiro(novo_valor)
+            cursor.execute("UPDATE autor SET ano_morte = %s WHERE id_autor = %s", (novo_valor, id_autor))
+        elif campo == 14:
+            novo_valor = input("Digite a nova quantidade de leituras: ")
+            novo_valor = verifica_digito_inteiro(novo_valor)
+            cursor.execute("UPDATE leitura SET quantidade_leitura = %s WHERE id_leitura = %s", (novo_valor, id_leitura))
+        elif campo == 15:
+            novo_dia = input("Digite o novo dia de leitura: ")
+            novo_dia = verifica_digito_inteiro(novo_dia)
+            novo_mes = input("Digite o novo mês de leitura: ")
+            novo_mes = verifica_digito_inteiro(novo_mes)
+            novo_ano = input("Digite o novo ano de leitura: ")
+            novo_ano = verifica_digito_inteiro(novo_ano)
+            nova_data = datetime.date(novo_ano, novo_mes, novo_dia)
+            cursor.execute("UPDATE leitura SET data_leitura = %s WHERE id_leitura = %s", (nova_data, id_leitura))
+        elif campo == 16:
+            novo_valor = input("Digite a nova nota: ")
+            novo_valor = verifica_digito_inteiro(novo_valor)
+            cursor.execute("UPDATE leitura SET nota = %s WHERE id_leitura = %s", (novo_valor, id_leitura))
+        elif campo == 17:
+            break
+        else:
+            print("Opção inválida. Tente novamente.")
+
+        conexao.commit()
+        print("Alteração realizada com sucesso.")
+
+    cursor.close()
+    conexao.close()
+
+def lista_autores():
+    titulo_do_programa("LISTA DE AUTORES LIDOS")
+    cursor, conexao = iniciabanco()
+    cursor.execute('''SELECT autor.nome, autor.pais, autor.estado, autor.cor, autor.sexo, autor.vivo, autor.ano_morte, autor.id_autor FROM leitura  
+    	INNER JOIN livros_autores ON leitura.id_livro_autores = livros_autores.id_livro_autores
+        INNER JOIN livro ON livros_autores.id_livro = livro.id_livro
+        INNER JOIN autor ON livros_autores.autor1 = autor.id_autor
+        where leitura.concluida  = true''')
+    resultados = cursor.fetchall()
+
+    # Verificar se resultados está correto
+    if not resultados:
+        print("Nenhum livro encontrado.")
+    else:
+        for linha in resultados:
+            print(f":{linha[7]} | {linha[0]} | {linha[1]} | estado: {linha[2]} | cor: {linha[3]} | sexo: {linha[4]} | vivo: {linha[5]} | Ano da Morte: {linha[6]}")
+
+    # Fechar a conexão com o banco de dados
+    cursor.close()
+    conexao.close()
+
+def lista_livros():
+    titulo_do_programa("LISTA DE LIVROS LIDOS")
+    cursor, conexao = iniciabanco()
+    cursor.execute('''SELECT livro.titulo, livro.tipo, livro.isbn, livro.editora, livro.paginas, livro.resumo FROM leitura  
+    	INNER JOIN livros_autores ON leitura.id_livro_autores = livros_autores.id_livro_autores
+        INNER JOIN livro ON livros_autores.id_livro = livro.id_livro
+        INNER JOIN autor ON livros_autores.autor1 = autor.id_autor
+        where leitura.concluida  = true''')
+    resultados = cursor.fetchall()
+
+    # Exibir resultados brutos para debug
+    print("Resultados brutos:", resultados)
+
+    # Verificar se resultados está correto
+    if not resultados:
+        print("Nenhum livro encontrado.")
+    else:
+        for linha in resultados:
+            print(f"Título: {linha[0]}, {linha[1]}, ISBN: {linha[2]}, Editora: {linha[3]}, Páginas: {linha[4]}, Resumo: {linha[5]}")
+
+    # Fechar a conexão com o banco de dados
+    cursor.close()
+    conexao.close()
+
+def lista_leituras():
+    limpar()
+    print("VISUALIZAÇÃO DAS LEITURAS NO ANO DE 2024!")
+    print()
+    cursor, conexao = iniciabanco()
+    cursor.execute('''
+    SELECT livro.titulo, autor.nome, autor.pais, autor.estado, autor.sexo, autor.ano_morte, livro.tipo,
+    livro.editora, livro.paginas, livro.resumo, ROW_NUMBER() OVER (ORDER BY leitura.data_leitura) AS numero_leitura, leitura.data_leitura
+        FROM leitura
+        INNER JOIN livros_autores ON leitura.id_livro_autores = livros_autores.id_livro_autores
+        INNER JOIN livro ON livros_autores.id_livro = livro.id_livro
+        INNER JOIN autor ON livros_autores.autor1 = autor.id_autor
+        WHERE leitura.concluida =  true
+    ORDER BY leitura.data_leitura;
+                   ''')
+    resultados = cursor.fetchall()
+
+    # Itera sobre os resultados e exibe-os na tela
+    for linha in resultados:
+        print("Título:", linha[0])
+        print("Autor:", linha[1])
+        print("País do Autor:", linha[2])
+        if linha[3]:
+            print("Estado do Autor:", linha[3])
+        print("Sexo do Autor:", linha[4])
+        if linha[5]:
+            print("Ano de Morte do Autor:", linha[5])
+        print("Tipo de Livro:", linha[6])
+        print("Editora:", linha[7])
+        print("Páginas:", linha[8])
+        print("Resumo:", linha[9])
+        print("Número da Leitura:", linha[10])
+        data_formatada = linha[11].strftime("%d/%m/%Y")
+        print("Data de Leitura:", data_formatada)
+        print("--------------------------------------")
+
+    input("Tecle em qualquer tecla paara voltar ao menu anterior.")
+    cursor.close()
+
+def visualizar_usuario():
+    cursor, conexao = iniciabanco()
+    cursor.execute("SELECT id_usuario, nome FROM usuarios")
+    usuarios = cursor.fetchall()
+    
+    if not usuarios:
+        print("Nenhum usuário encontrado.")
+    else:
+        for usuario in usuarios:
+            print(f"ID: {usuario[0]}, Nome: {usuario[1]}")
+    
+    cursor.close()
+    conexao.close()
+
+def excluir_usuario():
+    cursor, conexao = iniciabanco()
+    
+    # Exibe todos os usuários
+    cursor.execute("SELECT id_usuario, nome FROM usuarios")
+    usuarios = cursor.fetchall()
+    
+    if not usuarios:
+        print("Nenhum usuário encontrado.")
+        cursor.close()
+        conexao.close()
+        return
+    
+    # Mostra os usuários para o usuário
+    print("\nUsuários existentes:")
+    for usuario in usuarios:
+        print(f"ID: {usuario[0]}, Nome: {usuario[1]}")
+    
+    id_usuario = input("Digite o ID do usuário que deseja excluir: ")
+    id_usuario = verifica_digito_inteiro(id_usuario)
+    
+    # Verifica se o ID do usuário existe
+    cursor.execute("SELECT * FROM usuarios WHERE id_usuario = %s", (id_usuario,))
+    usuario_selecionado = cursor.fetchone()
+    
+    if not usuario_selecionado:
+        print("Usuário não encontrado.")
+        cursor.close()
+        conexao.close()
+        return
+    
+    # Confirmação antes de excluir
+    confirmar = input(f"Tem certeza que deseja excluir o usuário {usuario_selecionado[1]}? (s/n): ").lower()
+    if confirmar == 's' or confirmar == 'sim':
+        try:
+            cursor.execute("DELETE FROM usuarios WHERE id_usuario = %s", (id_usuario,))
+            conexao.commit()
+            print("Usuário excluído com sucesso.")
+        except psycopg2.Error as e:
+            print(f"Erro ao excluir usuário: {e}")
+            conexao.rollback()
+    else:
+        print("Exclusão cancelada.")
+    
+    cursor.close()
+    conexao.close()
+
+def alterar_senha_usuario():
+    nome = input("Digite o nome do usuário que deseja alterar a senha: ")
+
+    cursor, conexao = iniciabanco()
+    
+    # Verifica se o usuário existe
+    cursor.execute("SELECT * FROM usuarios WHERE nome = %s", (nome,))
+    usuario_selecionado = cursor.fetchone()
+    
+    if not usuario_selecionado:
+        print("Usuário não encontrado.")
+        cursor.close()
+        conexao.close()
+        return
+    
+    # Solicita a senha atual
+    senha_atual = getpass.getpass("Digite a senha atual: ")
+    
+    # Verifica se a senha atual está correta
+    cursor.execute("SELECT * FROM usuarios WHERE nome = %s AND senha = %s", (nome, senha_atual))
+    usuario_valido = cursor.fetchone()
+    
+    if not usuario_valido:
+        print("Senha atual incorreta.")
+        cursor.close()
+        conexao.close()
+        return
+    
+    # Solicita a nova senha e a confirmação
+    while True:
+        nova_senha = getpass.getpass("Digite a nova senha: ")
+        confirmacao_senha = getpass.getpass("Confirme a nova senha: ")
+        
+        if nova_senha == confirmacao_senha:
+            break
+        else:
+            print("As senhas não conferem. Tente novamente.")
+    
+    try:
+        cursor.execute("UPDATE usuarios SET senha = %s WHERE nome = %s", (nova_senha, nome))
+        conexao.commit()
+        print("Senha alterada com sucesso.")
+    except psycopg2.Error as e:
+        print(f"Erro ao alterar a senha: {e}")
+        conexao.rollback()
+    finally:
+        cursor.close()
+        conexao.close()
+
+def adicionar_usuario():
+    nome = input("Digite o nome do novo usuário: ")
+    senha = ' '
+    confirma_senha = 'senha'
+    while senha != confirma_senha:
+        senha = getpass.getpass("Digite a senha do novo usuário: ")
+        confirma_senha = getpass.getpass("Confirme a senha do novo usuário: ")
+
+    cursor, conexao = iniciabanco()
+    try:
+        cursor.execute("INSERT INTO usuarios (nome, senha) VALUES (%s, %s)", (nome, senha))
+        conexao.commit()
+        print("Usuário adicionado com sucesso.")
+    except psycopg2.Error as e:
+        print(f"Erro ao adicionar usuário: {e}")
+        conexao.rollback()
+    finally:
+        cursor.close()
+        conexao.close()
+
+def configuracoes():
+    while True:
+        print("\nConfigurações: ")
+        print("1. Adicionar usuário [user.add] ")
+        print("2. Visualizar usuários [user.ver] ")
+        print("3. Excluir usuário [user.del] ")
+        print("4. Alterar senha do usuário [user.alterar]")
+        print("5. Voltar ao menu principal [voltar] ")
+        print("6. Adicionar novos funções [function.add] ")
+        
+        opcao = input("Digite o número da opção desejada: ")
+        opcao = opcao.lower()
+        
+        if opcao == 'user.add' or opcao == '1':
+            adicionar_usuario()
+        elif opcao == 'user.ver' or opcao == '2':
+            visualizar_usuario()
+        elif opcao == 'user.del' or opcao == '3':
+            excluir_usuario()
+        elif opcao == 'user.alterar' or opcao == '4':
+            alterar_senha_usuario()
+        elif opcao == 'voltar' or opcao == '5':
+            break
+        elif opcao == 'function.add':
+            print("Função a ser desenvolvida.")
+        else:
+            print("Opção inválida. Tente novamente.")
+
+def continuar(variavel):
+    while True:
+        novo_valor = input(f"Digite novamente o(a) {variavel}: ")
+        print(f"O(a) novo(a) {variavel} é {novo_valor}.")
+        continuar = input("As informações estão corretas? (s/sim para confirmar): ").lower()
+        if continuar == 's' or continuar == 'sim':
+            return novo_valor
+
+def atualizar_historico_dias_leitura():
+    cursor, conexao = iniciabanco()
+    data =  datetime.now()
+    print(data)
+    sql = "INSERT INTO historico_dias_leitura (data, alteracao) VALUES (%s, 1);"
+    dados = [data]
+    cursor.execute(sql, dados)
+    conexao.commit()
+    cursor.close()
+    conexao.close()
+
+def atualizar_dias_leitura():
+    cursor, conexao = iniciabanco()
+    sql = "SELECT dias, inicio_data FROM dias_leitura WHERE status = true;"
+    #Executa o sql
+    cursor.execute(sql)
+    resultados = cursor.fetchall()
+    #Extraimos o resultado sql
+    if resultados:
+        resultados = resultados[0]
+        dias = resultados[0]
+        data_incial_str = resultados[1]
+        #Pegando a data
+        data_incial = datetime.strftime(data_incial_str, '%Y-%m-%d')
+        data_atual = datetime.now().strftime('%Y-%m-%d')
+        #Transformando em data para calcular a diferença
+        data_incial_data = datetime.strptime(data_incial, '%Y-%m-%d') 
+        data_atual_data = datetime.strptime(data_atual, '%Y-%m-%d') 
+        diferenca = data_atual_data - data_incial_data
+        diferenca = diferenca.days
+        #A função em si
+        if dias == diferenca:
+            return
+        elif (diferenca - dias) == 1:
+            sql = "UPDATE dias_leitura SET dias = %s WHERE status = true;"
+            dias = dias + 1
+            dados = [dias]
+            cursor.execute(sql, dados)
+            conexao.commit()
+            conexao.close()
+            cursor.close()
+            return
+        elif (diferenca - dias) > 1:
+            sql_consulta = "SELECT MAX (data) AS maior_data FROM historico_dias_leitura;"
+            cursor.execute(sql_consulta)
+            data_historica = cursor.fetchall()
+            data_historica = data_historica[0]
+            data_historica = data_historica[0]
+            dados = [data_historica]
+            sql = "UPDATE dias_leitura SET final_data = %s, status = false WHERE status = true;"
+            cursor.execute(sql, dados)
+            conexao.commit()
+            sql_novo_registro = "INSERT INTO dias_leitura (dias, inicio_data, status) VALUES (0, %s, true);"
+            cursor.execute(sql_novo_registro, dados)
+            conexao.commit()
+            conexao.close()
+            cursor.close()
+            return
+        else:
+            print("Diferença do recorde de leitura inválida.")
+            return
+    else:
+        print("Não há nenhum recorde ativo, favor inserir manualmente no sql ou construir uma função para isso.")
+
+def inserir_historico_de_leitura_manual():
+    cursor, conexao = iniciabanco()
+    sql = """
+    SELECT leitura.id_leitura, livro.titulo, autor.nome, livro.paginas
+    FROM leitura 
+    INNER JOIN livros_autores ON livros_autores.id_livro_autores = leitura.id_livro_autores
+    INNER JOIN livro ON livros_autores.id_livro = livro.id_livro
+    INNER JOIN autor ON livros_autores.autor1 = autor.id_autor
+    WHERE leitura.concluida = false;"""
+    cursor.execute(sql)
+    resultados = cursor.fetchall()
+
+    resultado_cores = []
+    for linha in resultados:
+        id_leitura = linha[0]
+        titulo = colored(linha[1], "green")
+        nome_autor = linha[2]
+        paginas = linha[3]
+        nova_linha = (id_leitura, titulo, nome_autor, paginas)
+        resultado_cores.append(nova_linha)
+
+    headers = ["id_leitura", "Titulo", "Nome do(a) Autor(a)", "Páginas"]
+    tabela = tabulate(resultado_cores, headers=headers, tablefmt="grid")
+    print(tabela)
+
+    id_leitura = input("Digite o id_leitura que você deseja inserir: ")
+    id_leitura = verifica_digito_inteiro(id_leitura)
+    data = input("Digite a data (formato DD/MM/AAAA): ")
+    hora = input("Digite a hora que começou (HH): ")
+    hora = verifica_digito_inteiro(hora)
+    minutos = input("Digite a quantidade de minutos que você leu: ")
+    minutos = verifica_digito_inteiro(minutos)
+
+    dia_leitura_inicio = datetime.strptime(f"{data} {hora}:00:00", "%d/%m/%Y %H:%M:%S")
+    duracao = timedelta(minutes=int(minutos))
+    dia_leitura_final = dia_leitura_inicio + duracao
+    tempo_minutos = minutos
+    tempo_leitura = duracao    
+    dados = [id_leitura, dia_leitura_inicio, dia_leitura_final, tempo_leitura, tempo_minutos]
+    sql_insercao = "INSERT INTO historico_leitura (id_leitura, dia_leitura_inicio, dia_leitura_final, tempo_leitura, tempo_minutos) VALUES (%s, %s, %s, %s, %s)"
+    cursor.execute(sql_insercao, dados)
+    conexao.commit()
+    sql_historico_dias_leitura = "INSERT INTO historico_dias_leitura (data, alteracao) VALUES (%s, 1);"
+    dados = [dia_leitura_inicio]
+    cursor.execute(sql_historico_dias_leitura, dados)
+    conexao.commit()
+    conexao.close()
+    cursor.close()
+    print("Dados inseridos com sucesso!")
+
+def notas_leitura():
+    atualizar_historico_dias_leitura()
+    atualizar_dias_leitura()
+    data_hoje = datetime.now().date().strftime('%Y-%m-%d')
+    def inserir_nota_leitura(id_leitura, titulo, hashtag, nota, data_hoje):
+            cursor, conexao = iniciabanco()
+            sql = "INSERT INTO anotacao_leitura (id_leitura, titulo, hashtag, anotacao, data_anotacao) VALUES (%s, %s, %s,%s,%s)"
+            dados = [id_leitura, titulo, hashtag, nota, data_hoje]
+            cursor.execute(sql, dados)
+            conexao.commit()
+            cursor.close()
+            conexao.close()
+            print("--------------------------")
+            print("Nota inserida com sucesso.")
+            print("--------------------------")
+    def inserir_historico_leitura(inicio, final, id_leitura):
+        cursor, conexao = iniciabanco()
+        sql = "INSERT INTO historico_leitura (id_leitura, dia_leitura_inicio, dia_leitura_final, tempo_leitura, tempo_minutos) VALUES (%s, %s, %s, %s, %s);"
+        final = datetime.strptime(final, '%Y-%m-%d %H:%M:%S')
+        inicio = datetime.strptime(inicio, '%Y-%m-%d %H:%M:%S')
+        tempo_leitura = final - inicio
+        tempo_minutos = int(tempo_leitura.total_seconds() / 60)
+        dados = [id_leitura, inicio, final, tempo_leitura, tempo_minutos]
+        cursor.execute(sql, dados)
+        conexao.commit()
+        cursor.close()
+        conexao.close()
+    limpar()
+    titulo_do_programa("***INSERINDO NOTAS DE LEITURA***")
+    print()
+    cursor, conexao = iniciabanco()
+    sql = ('''
+    SELECT leitura.id_leitura, livro.titulo, autor.nome
+            FROM leitura
+            INNER JOIN livros_autores ON livros_autores.id_livro_autores = leitura.id_livro_autores
+            INNER JOIN livro ON livros_autores.id_livro = livro.id_livro
+            INNER JOIN autor ON livros_autores.autor1 = autor.id_autor
+            WHERE leitura.concluida = false;
+               ''')
+    cursor.execute(sql)
+    resultados = cursor.fetchall()
+    print("As leituras que você tem em andamento são: \n")
+    def mostrar_leituras_em_andamento():
+        for linha in resultados:
+            print("O id_livro do livro é:     ", linha[0])
+            print("O título do livro é:       ", linha[1])
+            print("O nome do autor é:         ", linha[2])
+            print("---------------------------------------------------------")
+        return
+    mostrar_leituras_em_andamento()
+    
+    data_hoje_minutos_incio = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    def digita_id_leitura():
+        id_leitura = input("Digite o id da leitura a qual você vinculará a nota? ")
+        id_leitura = verifica_digito_inteiro(id_leitura)
+        return id_leitura
+    id_leitura = digita_id_leitura()    
+    while True:
+        print()
+        print("***INSERINDO NOTAS***\n")
+        comando = input("\nPor favor, digite o comando: ")
+        comando = comando.lower()
+        if comando == 'nota':
+            titulo = input(colored("\nDigite o titulo da nota: ", "green"))
+            nota = input(colored("\nDigite a nota em si: ", "green"))
+            hashtag = input(colored("\nDigite as hashtag da nota, se houver: ", "green"))
+            print(f"O id_leitura do livro é: '{id_leitura}'")
+            print(f"O título é: '{titulo}'")
+            print(f"A nota é: '{nota}'")
+            print(f"As hashtags são: '{hashtag}'")
+            inserir_nota_leitura(id_leitura=id_leitura, hashtag=hashtag, titulo=titulo, data_hoje=data_hoje, nota=nota)
+            input("\nDigite qualquer tecla para continuar! ")
+            limpar()
+        elif comando == 'mostrar':
+            limpar()
+            mostrar_leituras_em_andamento()
+        elif comando == 'voltar':
+            data_hoje_minutos_final = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            inserir_historico_leitura(inicio=data_hoje_minutos_incio,final=data_hoje_minutos_final, id_leitura=id_leitura)
+            print("***INSERINDO NOTAS***\n")
+            mostrar_leituras_em_andamento()
+            id_leitura = digita_id_leitura()
+            data_hoje_minutos_incio = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        elif comando == 'sair':
+            break
+        else:
+            print("Você não digitou um comando válido!")
+    print()
+    data_hoje_minutos_final = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    inserir_historico_leitura(inicio=data_hoje_minutos_incio,final=data_hoje_minutos_final, id_leitura=id_leitura)
+
+
+
+
+def inserir_nota_geral():
+    def continuar(valor, variavel):
+        while True:
+            novo_valor = input(f"Digite novamente {valor}: ")
+            print(f"O (a) {variavel} é {novo_valor}.")
+            continuar = input("As informações estão corretas? (s/sim para confirmar): ").lower()
+            if continuar == 's' or continuar == 'sim':
+                return novo_valor
+    while True:
+        limpar()
+        titulo_do_programa("**NOTAS GERAIS***")
+        print()
+        comando_ou_nota = input("Digite [nota] para inserir uma nota. Ou [voltar] para voltar ao menu anterior: ")
+        comando_ou_nota = comando_ou_nota.lower()
+        if comando_ou_nota == 'nota' or comando_ou_nota == '1':
+            titulo = input(colored("Digite o título da nota: ", 'green'))
+            nota = input(colored("Digite a nota: ", 'green'))
+            hashtag = input(colored("Digite as hashtags: ", 'green'))
+            print(f"O título é: '{titulo}'")
+            print(f"A nota é: '{nota}'")
+            print(f"As hashtags são: '{hashtag}'")
+            confirma = input("Digite 'sim' para incluir ou 'titulo', 'nota' ou 'hashtag' para alterar, ou 'sair' para sair: ").lower()    
+            if confirma == 'titulo':
+                titulo = continuar("título", titulo)
+            elif confirma == 'nota':
+                nota = continuar("nota", nota)
+            elif confirma == 'hashtag':
+                hashtag = continuar("hashtags", hashtag)
+            elif confirma == 'sair':
+                return
+            elif confirma == 's' or confirma == 'sim':    
+                cursor, conexao = iniciabanco()
+                sql = "INSERT INTO anotacao_geral (titulo, hashtag, anotacao) VALUES (%s, %s, %s)"
+                dados = [titulo, hashtag, nota]
+                cursor.execute(sql, dados)
+                conexao.commit()
+                cursor.close()
+                conexao.close()
+                print("Nota inserida com sucesso.")
+            else:
+                print("Você não digitou uma opção válida.")
+        elif comando_ou_nota == 'voltar' or comando_ou_nota == 'v' or comando_ou_nota == 'sair' or comando_ou_nota == 's':
+            return
+        else:
+            print("Comando inválido, por favor digite novamente: ")
+            continue 
+
+def inserir_historico_de_leitura_manual():
+    cursor, conexao = iniciabanco()
+    sql = """
+    SELECT leitura.id_leitura, livro.titulo, autor.nome, livro.paginas
+    FROM leitura 
+    INNER JOIN livros_autores ON livros_autores.id_livro_autores = leitura.id_livro_autores
+    INNER JOIN livro ON livros_autores.id_livro = livro.id_livro
+    INNER JOIN autor ON livros_autores.autor1 = autor.id_autor
+    WHERE leitura.concluida = false;"""
+    cursor.execute(sql)
+    resultados = cursor.fetchall()
+
+    resultado_cores = []
+    for linha in resultados:
+        id_leitura = linha[0]
+        titulo = colored(linha[1], "green")
+        nome_autor = linha[2]
+        paginas = linha[3]
+        nova_linha = (id_leitura, titulo, nome_autor, paginas)
+        resultado_cores.append(nova_linha)
+
+    headers = ["id_leitura", "Titulo", "Nome do(a) Autor(a)", "Páginas"]
+    tabela = tabulate(resultado_cores, headers=headers, tablefmt="grid")
+    print(tabela)
+
+    id_leitura = input("Digite o id_leitura que você deseja inserir: ")
+    id_leitura = verifica_digito_inteiro(id_leitura)
+    data = input("Digite a data (formato DD/MM/AAAA): ")
+    hora = input("Digite a hora que começou (HH): ")
+    hora = verifica_digito_inteiro(hora)
+    minutos = input("Digite a quantidade de minutos que você leu: ")
+    minutos = verifica_digito_inteiro(minutos)
+
+    dia_leitura_inicio = datetime.strptime(f"{data} {hora}:00:00", "%d/%m/%Y %H:%M:%S")
+    duracao = timedelta(minutes=int(minutos))
+    dia_leitura_final = dia_leitura_inicio + duracao
+    
+    dados = [id_leitura, dia_leitura_inicio, dia_leitura_final, duracao, minutos]
+    sql_insercao = "INSERT INTO historico_leitura (id_leitura, dia_leitura_inicio, dia_leitura_final, tempo_leitura, tempo_minutos) VALUES (%s, %s, %s, %s, %s)"
+    cursor.execute(sql_insercao, dados)
+    conexao.commit()
+    conexao.close()
+    cursor.close()
+    print("Dados inseridos com sucesso!")
+
+def atualizar_historicos(usuario):
+
+    def format_time(seconds):
+        hrs, remainder = divmod(seconds, 3600)
+        mins, secs = divmod(remainder, 60)
+        return f"{int(hrs):02}:{int(mins):02}:{int(secs):02}"
+    
+    def cronometro():
+        f2_verde = colored("F6", 'green')
+        print(f"Cronômetro iniciado. Pressione {f2_verde} para parar.")
+        start_time = time.time()
+        data_hoje_minutos_incio = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        # Loop até a tecla F2 ser pressionada
+        while True:
+            if keyboard.is_pressed('F6'):
+                break
+            elapsed_time = time.time() - start_time
+            formatted_time = colored(format_time(elapsed_time), 'green')
+            print((f"Tempo ativo: {formatted_time}"), end='\r')
+            time.sleep(0.1)  # Pequena pausa para não sobrecarregar o CPU
+
+        end_time = time.time()
+        total_time = end_time - start_time
+        tempo_total_inteiro = round(total_time/60)
+        formatted_total_time = colored(format_time(total_time), 'green')
+        print(f"\nCronômetro parado. Tempo total: {formatted_total_time}")
+        tempo_leitura = formatted_total_time
+        data_hoje_minutos_final = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        return tempo_leitura, data_hoje_minutos_incio, data_hoje_minutos_final, tempo_total_inteiro
+    
+    def qual_leitura():
+        cursor, conexao = iniciabanco()
+        sql_consulta = ('''
+        SELECT leitura.id_leitura, livro.titulo, autor.nome
+                FROM leitura
+                INNER JOIN livros_autores ON livros_autores.id_livro_autores = leitura.id_livro_autores
+                INNER JOIN livro ON livros_autores.id_livro = livro.id_livro
+                INNER JOIN autor ON livros_autores.autor1 = autor.id_autor
+                WHERE leitura.concluida = false;
+                ''')
+        cursor.execute(sql_consulta)
+        resultados = cursor.fetchall()
+        print("As leituras que você tem em andamento são: \n")
+        for linha in resultados:
+            livro_id = colored(linha[0], 'green')
+            print("O id_livro do livro é:     ", livro_id)
+            print("O título do livro é:       ", linha[1])
+            print("O nome do autor é:         ", linha[2])
+            print("---------------------------------------------------------")
+        id_leitura = input("Qual o id da leitura que você deseja iniciar? ")
+        id_leitura = verifica_digito_inteiro(id_leitura)
+        
+        return id_leitura
+    
+    def atualizar_banco_de_dados(id, tempo_minutos, data_inicio, data_final, tempo_inteiro, tabela, palavras):
+        final = datetime.strptime(data_final, '%Y-%m-%d %H:%M:%S')
+        inicio = datetime.strptime(data_inicio, '%Y-%m-%d %H:%M:%S')
+        tempo_intervalo = final - inicio
+        
+        dados_historico_leitura = [id, inicio, final, tempo_intervalo, tempo_inteiro]
+        dados_historico_escrita = [id, inicio, final, tempo_intervalo, tempo_inteiro, palavras]
+        
+        cursor, conexao = iniciabanco()
+        if tabela == 'historico_leitura':
+            sql = "INSERT INTO historico_leitura (id_leitura, dia_leitura_inicio, dia_leitura_final, tempo_leitura, tempo_minutos) VALUES (%s, %s, %s, %s, %s)"
+            cursor.execute(sql, dados_historico_leitura)
+        elif tabela == 'historico_escrita':
+            sql = "INSERT INTO historico_escrita (id, dia_escrita_inicio, dia_escrita_final, tempo_escrita, tempo_minutos, palavras) VALUES (%s, %s, %s, %s::INTERVAL, %s, %s)"
+            cursor.execute(sql, dados_historico_escrita)     
+        else:
+            print("Não foi possível inserir no banco.")
+            return
+        
+        conexao.commit()
+        conexao.close()
+        cursor.close()
+
+    def submenu():
+        atualizar_historico_dias_leitura()
+        atualizar_dias_leitura()
+        limpar()
+        while True:
+            limpar()
+            print(colored(("***Inserindo Tempo de Leitura***\n"), 'green'))
+            print("Você deseja inserir tempo de (l)eitura ou (e)crita? \nDigite (v)oltar para voltar ou clear para limpar. \n")
+            opcao = input(f"{usuario}: ")
+            opcao = opcao.lower()
+            if opcao == 'l' or opcao == 'leitura':
+                limpar()
+                id_leitura = qual_leitura()
+                tempo_minutos, inicio, final, tempo_inteiro = cronometro()
+                tabela = "historico_leitura"
+                palavras = 0
+
+                atualizar_banco_de_dados(id=id_leitura, tempo_minutos=tempo_minutos, data_inicio=inicio, data_final=final, tempo_inteiro=tempo_inteiro, tabela=tabela, palavras=palavras)
+            
+            elif opcao == 'e' or opcao == 'escrita':
+                limpar()
+                ID = 1
+                tempo_minutos, inicio, final, tempo_inteiro = cronometro()
+                tabela = "historico_escrita"
+                palavras = input("Digite a quantidade de palavras da sessão: ")
+                palavras = verifica_digito_inteiro(palavras)
+                atualizar_banco_de_dados(id=ID, tempo_inteiro=tempo_inteiro, tempo_minutos=tempo_minutos, data_inicio=inicio, data_final=final, tabela=tabela, palavras=palavras)
+
+            elif opcao == 'v' or opcao == 'voltar':
+                return
+            elif opcao == 'clear' or opcao == 'limpar':
+                limpar()
+                print(colored(("***Inserindo Tempo de Leitura***\n\n"), 'green'))
+            elif opcao == 'tempo' or opcao == 't':
+                limpar()
+                print("***Tempo de Leitura***\n")
+                tempo_leitura()
+                input("\nDigite uma tecla para finalizar a consulta. ")
+            elif opcao == 'media':
+                limpar()
+                print("***Lista de Médias***\n")
+                lista_de_medias()
+                input("\nDigite uma tecla para finalizar a consulta. ")
+
+            else:
+                print("Opção inválida, por favor digite novamente.")
+
+    submenu()
+
+
+
+def menu_principal(usuario):
+    titulo_do_programa("PROGRAMA TEIA")
+    tempo_leitura()
+    lista_de_medias()
+    print("Versão 0.35")
+    while True:
+        print()
+        print(colored("---Menu principal---\n", 'green'))
+        opcao = input(f"{usuario}, digite um comando, por favor:  ")
+        opcao = opcao.lower()
+        if opcao == 'visualizar' or opcao == '2':
+            visualizar_leituras()
+        elif opcao == 'cadastrar' or opcao == '1':
+            id_leitor = cadastrar_livro()
+            lista_id_autor = cadastrar_autor()
+            id_livro_autor = cadastrar_livro_autor(id_leitor, lista_id_autor)
+            cadastrar_leitura(id_livro_autor)
+            limpar()
+            titulo_do_programa("PROGRAMA TEIA")
+            print("Leitura cadastrada com sucesso! Parabéns! Seus novos números:")
+            lista_de_comandos()
+            lista_de_medias()
+        elif opcao == 'procurar' or opcao == '3':
+            procurar_leituras()
+        elif opcao == 'alterar' or opcao == '4':
+            alterar_leituras()
+        elif opcao == 'clear' or opcao == '6':
+            limpar()
+        elif opcao == 'sair' or opcao == '5':
+            break
+        elif opcao == 'autores' or opcao == '7':
+            lista_autores()
+        elif opcao == 'livros' or opcao == '8':
+            lista_livros()
+        elif opcao == 'leituras' or opcao == '9':
+            lista_leituras()
+        elif opcao == 'menu' or opcao == 'ajuda':
+            lista_de_comandos()
+        elif opcao == 'conf' or opcao == '10':
+            configuracoes()
+            print("Menu Principal: ")
+            print()
+        elif opcao == 'tabela' or opcao == '11':
+            tabela_geral()
+        elif opcao == 'notasleitura' or opcao == '12':
+            notas_leitura()
+        elif opcao == 'notasgerais' or opcao == '13':
+            inserir_nota_geral()
+        elif opcao == 'concluirleitura' or opcao == '14':
+            concluir_leitura()
+        elif opcao == 'notamanual' or opcao == '15':
+            inserir_historico_de_leitura_manual()
+        elif opcao == 'media':
+            lista_de_medias()
+        elif opcao == 'inserir' or opcao == '16' or opcao == 'estudar':
+            atualizar_historicos(usuario)
+        #Excluir leitura em andamento ou qualquer leitura
+        elif opcao == '17':
+            excluir_leitura_em_andamento()
+        elif opcao == '18' or opcao == 'tabela':
+            tempo_leitura()
+        else: 
+            print(f'{usuario} Não encontrei esse comando! Por favor, digite um comando válido. Se não lembrar, digite ajuda!')
+
+def main():
+    # Solicita o login do usuário
+    usuario = None
+    while not usuario:
+        usuario = login_usuario()
+        if not usuario:
+            print("Por favor, tente novamente.")
+    
+    # Inicia o menu principal após o login bem-sucedido
+    menu_principal(usuario)
+
+
+if __name__ == "__main__":
+    main()
